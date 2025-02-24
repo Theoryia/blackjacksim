@@ -75,8 +75,8 @@ def calculate_hand(hand):
         
         return value
     except Exception as e:
-        print(f"Error in calculate_hand: {str(e)}")
-        print(f"Problem hand: {[str(c) for c in hand]}")
+        #print(f"Error in calculate_hand: {str(e)}")
+        #print(f"Problem hand: {[str(c) for c in hand]}")
         raise
 
 def get_strategy_advice(player_hand, dealer_card):
@@ -115,84 +115,83 @@ def get_strategy_advice(player_hand, dealer_card):
     return 'S'
 
 def simulate_blackjack(iterations, bet_amount):
-    print("\nInitializing simulation...")
     deck = Deck()
-    running_money = 1000
+    running_money = 10000
     wins = losses = pushes = 0
-    
-    print(f"Created new deck with {len(deck.cards)} cards")
     
     with open('blackjack_results.csv', 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=['Round', 'Result', 'Running_Money', 'Debug'])
         writer.writeheader()
-        print("CSV file created and header written")
         
         for round_num in range(1, iterations + 1):
             try:
-                print(f"\n--- Starting round {round_num} ---")
+                # Add money check at start of round
+                if running_money < bet_amount:
+                    print(f"\nOut of money (${running_money}) - stopping at round {round_num}")
+                    break
                 
                 # Check deck size and reshuffle
-                print(f"Checking deck size: {len(deck.cards)} cards")
+                #print(f"Checking deck size: {len(deck.cards)} cards")
                 if len(deck.cards) < 20:
-                    print(f"Reshuffling deck at {len(deck.cards)} cards")
+                    #print(f"Reshuffling deck at {len(deck.cards)} cards")
                     deck = Deck()
-                    print(f"New deck created with {len(deck.cards)} cards")
+                    #print(f"New deck created with {len(deck.cards)} cards")
                 
-                print("Dealing initial hands...")
+                #print("Dealing initial hands...")
                 player_hand = [deck.deal(), deck.deal()]
                 dealer_hand = [deck.deal(), deck.deal()]
-                print(f"Player hand: {[str(c) for c in player_hand]}")
-                print(f"Dealer hand: {[str(c) for c in dealer_hand]}")
+                #print(f"Player hand: {[str(c) for c in player_hand]}")
+                #print(f"Dealer hand: {[str(c) for c in dealer_hand]}")
                 
                 current_bet = bet_amount
                 debug_info = []
                 
-                print("\nStarting player's turn...")
+                #print("\nStarting player's turn...")
                 while True:
                     current_value = calculate_hand(player_hand)
-                    print(f"Current player hand value: {current_value}")
+                    #print(f"Current player hand value: {current_value}")
                     
                     if current_value > 21:
-                        print("Player bust!")
+                        #print("Player bust!")
                         break
                     
                     action = get_strategy_advice(player_hand, dealer_hand[1])
-                    print(f"Strategy suggests: {action}")
+                    #print(f"Strategy suggests: {action}")
                     
                     if action in ['S', 'R']:
-                        print("Standing/Surrendering")
+                        #print("Standing/Surrendering")
                         break
                     elif action == 'D':  # Changed this condition
                         if len(player_hand) == 2:
                             new_card = deck.deal()
-                            print(f"Doubling down, drew: {new_card}")
+                            #print(f"Doubling down, drew: {new_card}")
                             player_hand.append(new_card)
                             current_bet *= 2
                             break
                         else:
                             # If we can't double, we should hit instead
-                            print("Can't double after hit, hitting instead")
+                            #print("Can't double after hit, hitting instead")
                             new_card = deck.deal()
-                            print(f"Hitting, drew: {new_card}")
+                            #print(f"Hitting, drew: {new_card}")
                             player_hand.append(new_card)
                     elif action == 'H':
                         new_card = deck.deal()
-                        print(f"Hitting, drew: {new_card}")
+                        #print(f"Hitting, drew: {new_card}")
                         player_hand.append(new_card)
                 
-                print("\nStarting dealer's turn...")
+                #print("\nStarting dealer's turn...")
                 player_total = calculate_hand(player_hand)
                 dealer_total = calculate_hand(dealer_hand)
-                print(f"Initial dealer total: {dealer_total}")
+                #print(f"Initial dealer total: {dealer_total}")
                 
                 if player_total <= 21:
                     while calculate_hand(dealer_hand) < 17:
                         new_card = deck.deal()
-                        print(f"Dealer draws: {new_card}")
+                        #print(f"Dealer draws: {new_card}")
                         dealer_hand.append(new_card)
-                        print(f"New dealer total: {calculate_hand(dealer_hand)}")
+                        #print(f"New dealer total: {calculate_hand(dealer_hand)}")
                 
-                print("\nDetermining result...")
+                #print("\nDetermining result...")
                 dealer_total = calculate_hand(dealer_hand)
                 
                 # Determine result
@@ -225,14 +224,14 @@ def simulate_blackjack(iterations, bet_amount):
                     'Debug': ' | '.join(debug_info)
                 })
                 
-                # Changed to print every round instead of every 10
-                print(f"\nRound {round_num}:")
-                print(f"Current balance: ${running_money}")
-                print(f"Hand details: {' | '.join(debug_info)}")
-                print("-" * 80)
+                # Changed to #print every round instead of every 10
+                #print(f"\nRound {round_num}:")
+                #print(f"Current balance: ${running_money}")
+                #print(f"Hand details: {' | '.join(debug_info)}")
+                #print("-" * 80)
             
             except Exception as e:
-                print(f"\nError on round {round_num}:")
+                #print(f"\nError on round {round_num}:")
                 print(f"Last debug info: {' | '.join(debug_info)}")
                 print(f"Error message: {str(e)}")
                 return wins, losses, pushes, running_money
@@ -243,15 +242,18 @@ def simulate_blackjack(iterations, bet_amount):
 if __name__ == "__main__":
     iterations = int(input("Enter number of hands to simulate: "))
     bet_amount = int(input("Enter bet amount per hand: "))
+    initial_money = 1000  # Define initial money
     
     wins, losses, pushes, total_money = simulate_blackjack(iterations, bet_amount)
     
+    hands_played = wins + losses + pushes  # Calculate actual hands played
+    
     print("\nSimulation Results:")
-    print(f"Hands Played: {iterations}")
-    print(f"Wins: {wins} ({(wins/iterations)*100:.1f}%)")
-    print(f"Losses: {losses} ({(losses/iterations)*100:.1f}%)")
-    print(f"Pushes: {pushes} ({(pushes/iterations)*100:.1f}%)")
-    print(f"Initial Money: $1000")
+    print(f"Hands Played: {hands_played} of {iterations}")
+    print(f"Wins: {wins} ({(wins/hands_played)*100:.1f}%)")
+    print(f"Losses: {losses} ({(losses/hands_played)*100:.1f}%)")
+    print(f"Pushes: {pushes} ({(pushes/hands_played)*100:.1f}%)")
+    print(f"Initial Money: ${initial_money}")
     print(f"Final Money: ${total_money}")
-    print(f"Net Profit/Loss: ${total_money - 1000}")
-    print(f"Return Rate: {((total_money - 1000)/(bet_amount*iterations))*100:.2f}%")
+    print(f"Net Profit/Loss: ${total_money - initial_money}")
+    print(f"Return Rate per Round: {((total_money - initial_money)/(bet_amount*hands_played))*100:.2f}%")
