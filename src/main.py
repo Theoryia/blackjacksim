@@ -1,6 +1,10 @@
 import random
 import time
 import csv
+import hashlib
+import json
+import datetime
+import os
 
 blackjack_strategy = {
     "hard": {
@@ -114,9 +118,9 @@ def get_strategy_advice(player_hand, dealer_card):
     
     return 'S'
 
-def simulate_blackjack(iterations, bet_amount):
+def simulate_blackjack(iterations, bet_amount, initial_money):
     deck = Deck()
-    running_money = 10000
+    running_money = initial_money
     wins = losses = pushes = 0
     
     with open('blackjack_results.csv', 'w', newline='') as csvfile:
@@ -163,16 +167,19 @@ def simulate_blackjack(iterations, bet_amount):
                         break
                     elif action == 'D':  # Changed this condition
                         if len(player_hand) == 2:
-                            new_card = deck.deal()
-                            #print(f"Doubling down, drew: {new_card}")
-                            player_hand.append(new_card)
-                            current_bet *= 2
-                            break
+                            # Check if we have enough money to double down
+                            if running_money >= bet_amount * 2:
+                                new_card = deck.deal()
+                                player_hand.append(new_card)
+                                current_bet *= 2
+                                break
+                            else:
+                                # Not enough money to double, just hit instead
+                                new_card = deck.deal()
+                                player_hand.append(new_card)
                         else:
-                            # If we can't double, we should hit instead
-                            #print("Can't double after hit, hitting instead")
+                            # Can't double after hit, hit instead
                             new_card = deck.deal()
-                            #print(f"Hitting, drew: {new_card}")
                             player_hand.append(new_card)
                     elif action == 'H':
                         new_card = deck.deal()
@@ -197,7 +204,11 @@ def simulate_blackjack(iterations, bet_amount):
                 # Determine result
                 if player_total > 21:
                     result = "Loss"
-                    running_money -= current_bet
+                    # Only subtract what we have available
+                    if running_money >= current_bet:
+                        running_money -= current_bet
+                    else:
+                        running_money = 0
                     losses += 1
                 elif dealer_total > 21:
                     result = "Win"
@@ -209,7 +220,11 @@ def simulate_blackjack(iterations, bet_amount):
                     wins += 1
                 elif player_total < dealer_total:
                     result = "Loss"
-                    running_money -= current_bet
+                    # Only subtract what we have available
+                    if running_money >= current_bet:
+                        running_money -= current_bet
+                    else:
+                        running_money = 0
                     losses += 1
                 else:
                     result = "Push"
@@ -239,21 +254,105 @@ def simulate_blackjack(iterations, bet_amount):
     print("\nSimulation complete!")
     return wins, losses, pushes, running_money
 
+def get_strategy_hash():
+    """Generate a short hash of the blackjack strategy to use as identifier"""
+    # Create a serializable copy of the strategy
+    serializable_strategy = {
+        "hard": {},
+        "soft": {}
+    }
+    
+    # Convert hard hand tuple keys to strings and dealer card values to strings
+    for key_tuple, actions in blackjack_strategy["hard"].items():
+        key_str = str(key_tuple)
+        serializable_actions = {}
+        for dealer_card, action in actions.items():
+            serializable_actions[str(dealer_card)] = action
+        serializable_strategy["hard"][key_str] = serializable_actions
+    
+    # Convert soft hand tuple keys to strings and dealer card values to strings
+    for key_tuple, actions in blackjack_strategy["soft"].items():
+        key_str = str(key_tuple)
+        serializable_actions = {}
+        for dealer_card, action in actions.items():
+            serializable_actions[str(dealer_card)] = action
+        serializable_strategy["soft"][key_str] = serializable_actions
+    
+    # Now serialize and hash
+    strategy_str = json.dumps(serializable_strategy, sort_keys=True)
+    return hashlib.md5(strategy_str.encode()).hexdigest()[:8]
+
+def update_historical_results(iterations, bet_amount, wins, losses, pushes, initial_money, final_money):
+    """Update historical results CSV file for the current strategy"""
+    strategy_id = get_strategy_hash()
+    filename = f"strategy_{strategy_id}_games.csv"
+    file_exists = os.path.isfile(filename)
+    
+    with open(filename, 'a', newline='') as csvfile:
+        fieldnames = ['Iterations', 'Hands_Played', 'Bet_Amount', 'Wins', 
+                     'Losses', 'Pushes', 'Initial_Money', 'Final_Money', 'Profit', 
+                     'Win_Rate', 'Dealer_Win_Rate', 'Return_Rate', 'House_Edge']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        if not file_exists:
+            writer.writeheader()
+        
+        hands_played = wins + losses + pushes
+        win_rate = (wins / hands_played) * 100 if hands_played > 0 else 0
+        
+        # Calculate dealer win rate (excluding pushes)
+        dealer_win_rate = (losses / (wins + losses)) * 100 if (wins + losses) > 0 else 0
+        
+        # Fix return rate calculation - this should be profit per hand as a percentage of bet
+        profit = final_money - initial_money
+        return_rate = (profit / (bet_amount * hands_played)) * 100 if hands_played > 0 else 0
+        
+        # House edge is the negative of return rate (casino's advantage)
+        house_edge = -return_rate
+        
+        writer.writerow({
+            'Iterations': iterations,
+            'Hands_Played': hands_played,
+            'Bet_Amount': bet_amount,
+            'Wins': wins,
+            'Losses': losses,
+            'Pushes': pushes,
+            'Initial_Money': initial_money,
+            'Final_Money': final_money,
+            'Profit': profit,
+            'Win_Rate': f"{win_rate:.1f}%",
+            'Dealer_Win_Rate': f"{dealer_win_rate:.1f}%",
+            'Return_Rate': f"{return_rate:.2f}%",
+            'House_Edge': f"{house_edge:.2f}%"
+        })
+
 if __name__ == "__main__":
-    iterations = int(input("Enter number of hands to simulate: "))
-    bet_amount = int(input("Enter bet amount per hand: "))
-    initial_money = 1000  # Define initial money
+    num_games = int(input("Enter number of games to run: "))
+    iterations = int(input("Enter number of hands to simulate for each game: "))
+    bet_amount = int(input("Enter bet amount per hand: $"))
+    initial_money = int(input("Enter starting bankroll for each game: $"))
     
-    wins, losses, pushes, total_money = simulate_blackjack(iterations, bet_amount)
+    print("\nStarting simulation...")
+    print(f"Running {num_games} games with: {iterations} hands, ${bet_amount} bet, ${initial_money} bankroll")
     
-    hands_played = wins + losses + pushes  # Calculate actual hands played
+    for game_num in range(1, num_games + 1):
+        print(f"\n--- GAME {game_num} OF {num_games} ---")
+        
+        wins, losses, pushes, total_money = simulate_blackjack(iterations, bet_amount, initial_money)
+        
+        hands_played = wins + losses + pushes
+        print(f"\nGame {game_num} Results:")
+        print(f"Hands Played: {hands_played} of {iterations}")
+        print(f"Wins: {wins} ({(wins/hands_played)*100:.1f}%)")
+        print(f"Losses: {losses} ({(losses/hands_played)*100:.1f}%)")
+        print(f"Pushes: {pushes} ({(pushes/hands_played)*100:.1f}%)")
+        print(f"Initial Money: ${initial_money}")
+        print(f"Final Money: ${total_money}")
+        print(f"Net Profit/Loss: ${total_money - initial_money}")
+        print(f"Return Rate: {((total_money - initial_money)/(bet_amount*hands_played))*100:.2f}%")
+        
+        # Update the historical results CSV
+        update_historical_results(iterations, bet_amount, wins, losses, pushes, initial_money, total_money)
     
-    print("\nSimulation Results:")
-    print(f"Hands Played: {hands_played} of {iterations}")
-    print(f"Wins: {wins} ({(wins/hands_played)*100:.1f}%)")
-    print(f"Losses: {losses} ({(losses/hands_played)*100:.1f}%)")
-    print(f"Pushes: {pushes} ({(pushes/hands_played)*100:.1f}%)")
-    print(f"Initial Money: ${initial_money}")
-    print(f"Final Money: ${total_money}")
-    print(f"Net Profit/Loss: ${total_money - initial_money}")
-    print(f"Return Rate per Round: {((total_money - initial_money)/(bet_amount*hands_played))*100:.2f}%")
+    print("\nAll games completed!")
+    print(f"Results saved to strategy_{get_strategy_hash()}_games.csv")
